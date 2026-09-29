@@ -1,0 +1,17 @@
+class Task:
+    def __init__(self, title):
+        self.title = title
+        self.completed = False
+
+    def complete(self):
+        self.completed = True
+
+
+task = Task("Write project README")
+
+print(task.title)      # Write project README
+print(task.completed)  # False
+
+task.complete()
+print(task.completed)  # True
+
