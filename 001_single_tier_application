@@ -1,17 +1,24 @@
+# Represent a task with a title and a completion status.
 class Task:
     def __init__(self, title):
+        # Store the title supplied when the task is created.
         self.title = title
+
+        # New tasks start as incomplete.
         self.completed = False
 
     def complete(self):
+        # Mark this task as completed.
         self.completed = True
 
 
+# Create a task to write the project's README.
 task = Task("Write project README")
 
+# Display the task's title and initial completion status.
 print(task.title)      # Write project README
 print(task.completed)  # False
 
+# Complete the task, then confirm its status has changed.
 task.complete()
 print(task.completed)  # True
-
