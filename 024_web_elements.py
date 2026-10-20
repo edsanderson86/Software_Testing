@@ -2,6 +2,7 @@
 # Install: python -m pip install selenium
 # Run: python web_elements_example.py
 # Requires Chrome installed on your computer.
+# Demonstrate form controls, dialogs, additional windows, and dynamic content.
 
 from urllib.parse import quote
 
@@ -10,6 +11,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
+# Define a self-contained practice page with interactive controls.
+# The controls demonstrate browser behaviour without saving or deleting tasks.
 html = """
 <!doctype html>
 <html>
@@ -63,19 +66,23 @@ html = """
 </html>
 """
 
+# Launch Chrome and allow up to five seconds for each explicit wait.
 driver = webdriver.Chrome()
 wait = WebDriverWait(driver, 5)
 
 try:
+    # Load the encoded HTML directly without starting a web server.
     driver.get("data:text/html;charset=utf-8," + quote(html))
 
-    # Dropdown
+    # Wrap the native select element with Selenium's dropdown helper.
+    # Choose the visible label and verify the underlying option value.
     dropdown = Select(driver.find_element(By.ID, "priority"))
     dropdown.select_by_visible_text("High")
     assert dropdown.first_selected_option.get_attribute("value") == "high"
     print("Dropdown: PASS")
 
-    # Radio button
+    # Identify the Work radio button by its group name and value.
+    # Radio buttons with the same name form a single-choice group.
     work_radio = driver.find_element(
         By.CSS_SELECTOR, "input[name='task-type'][value='work']"
     )
@@ -83,43 +90,58 @@ try:
     assert work_radio.is_selected()
     print("Radio button: PASS")
 
-    # Checkbox
+    # Select the initially unchecked Urgent checkbox and verify its state.
     urgent_checkbox = driver.find_element(By.ID, "urgent")
     urgent_checkbox.click()
     assert urgent_checkbox.is_selected()
     print("Checkbox: PASS")
 
-    # JavaScript alert
+    # Open a JavaScript alert and wait until the dialog is available.
+    # Verify its message, then accept it to dismiss the dialog.
     driver.find_element(By.ID, "alert-button").click()
     alert = wait.until(EC.alert_is_present())
     assert alert.text == "Task saved"
     alert.accept()
     print("Alert: PASS")
 
-    # Confirmation popup
+    # Open a confirmation dialog and dismiss it to simulate choosing Cancel.
+    # The page records that choice as "No".
     driver.find_element(By.ID, "confirm-button").click()
     confirmation = wait.until(EC.alert_is_present())
     confirmation.dismiss()
     assert driver.find_element(By.ID, "answer").text == "No"
     print("Confirmation: PASS")
 
-    # Browser popup / new tab
+    # Remember the original window before opening another browsing context.
+    # The browser may present the new context as a tab or a separate window.
     original_window = driver.current_window_handle
     driver.find_element(By.ID, "popup-button").click()
     wait.until(EC.number_of_windows_to_be(2))
 
+    # Identify the new window by finding the handle that differs from the original.
     popup_window = next(
         handle for handle in driver.window_handles
         if handle != original_window
     )
+
+    # Switch to the new context and wait for its heading to become visible.
     driver.switch_to.window(popup_window)
-    assert driver.find_element(By.TAG_NAME, "h1").text == "Popup opened"
+    popup_heading = wait.until(
+        EC.visibility_of_element_located((By.TAG_NAME, "h1"))
+    )
+    assert popup_heading.text == "Popup opened"
+
+    # Close the popup and restore focus to the original page.
     driver.close()
     driver.switch_to.window(original_window)
     print("New window: PASS")
 
-    # Dynamic element: wait until JavaScript adds it.
+    # Click the load button once it is visible and enabled.
+    # Its JavaScript inserts a result element after an 800-millisecond delay.
     wait.until(EC.element_to_be_clickable((By.ID, "load-button"))).click()
+
+    # Wait for the inserted element to become visible rather than using
+    # a fixed sleep that might be too short or unnecessarily long.
     result = wait.until(
         EC.visibility_of_element_located((By.ID, "dynamic-result"))
     )
@@ -127,5 +149,5 @@ try:
     print("Explicit wait for dynamic element: PASS")
 
 finally:
+    # End the browser session even if an interaction or assertion fails.
     driver.quit()
-``` 

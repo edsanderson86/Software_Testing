@@ -2,6 +2,8 @@
 # Install: python -m pip install selenium
 # Run: python user_interface_testing.py
 # Requires Chrome installed on your computer.
+# Check page content, control states, input labeling, and task creation.
+# Tasks exist only in the page and are lost when it is reloaded.
 
 from urllib.parse import quote
 
@@ -10,6 +12,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+# Define a self-contained page with a labeled input, validation feedback,
+# and JavaScript that adds task titles to the displayed list.
 html = """
 <!doctype html>
 <html>
@@ -53,44 +57,53 @@ html = """
 </html>
 """
 
+# Launch Chrome and allow up to five seconds for explicit wait conditions.
 driver = webdriver.Chrome()
 wait = WebDriverWait(driver, 5)
 
 try:
+    # Load the encoded page directly without starting a web server.
     driver.get("data:text/html;charset=utf-8," + quote(html))
 
-    # Page content and visible controls
+    # Verify the page identity, input visibility, and button's enabled state.
+    # These checks do not assess the page's overall visual layout.
     assert driver.title == "To-Do List"
     assert driver.find_element(By.TAG_NAME, "h1").text == "To-Do List"
     assert driver.find_element(By.ID, "task-title").is_displayed()
     assert driver.find_element(By.ID, "add-task").is_enabled()
     print("Page content and controls: PASS")
 
-    # Accessibility: the input has an associated label
+    # Check that a label references the input's ID and has the expected text.
+    # This is one accessibility check, not a complete accessibility assessment.
     label = driver.find_element(By.CSS_SELECTOR, "label[for='task-title']")
     assert label.text == "Task title"
     print("Input label: PASS")
 
-    # Validation: empty input shows an error
+    # Submit the initially empty input and wait for visible error feedback.
     driver.find_element(By.ID, "add-task").click()
     error = wait.until(
         EC.visibility_of_element_located((By.ID, "error"))
     )
     assert error.text == "Enter a task title"
+
+    # Confirm that the rejected submission did not add a list item.
     assert driver.find_elements(By.CSS_SELECTOR, "#tasks li") == []
     print("Empty-title validation: PASS")
 
-    # Happy path: adding a task updates the interface
+    # Enter a valid title and activate the Add task button.
     title_input = driver.find_element(By.ID, "task-title")
     title_input.send_keys("Write README")
     driver.find_element(By.ID, "add-task").click()
 
+    # Wait until the list contains exactly one task before inspecting it.
     wait.until(
         lambda browser: len(
             browser.find_elements(By.CSS_SELECTOR, "#tasks li")
         ) == 1
     )
 
+    # Verify the displayed title and confirm that the form is ready
+    # for another entry, with its input and previous error cleared.
     assert driver.find_element(By.CSS_SELECTOR, "#tasks li").text == (
         "Write README"
     )
@@ -99,4 +112,5 @@ try:
     print("Add-task interaction: PASS")
 
 finally:
+    # End the browser session even if a check or interaction fails.
     driver.quit()

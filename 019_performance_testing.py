@@ -1,13 +1,11 @@
 # performance_test.py
 # Run with: python performance_test.py
 #
-# Local demonstration:
-# - Closed load: each virtual user waits before its next iteration.
-# - Open load: requests start at a fixed rate.
-# - Parameterization: each request gets a unique task title.
-# - Correlation: login token and task ID come from earlier responses.
-# - Timer and think time: measure responses; pause between user actions.
-# - Metrics: response time, throughput, utilization, and error rate.
+# Demonstrate two load profiles against a local task service:
+# - Closed load: a fixed number of users repeat a sequence of actions.
+# - Open load: user iterations are scheduled at a fixed arrival rate.
+# Each iteration logs in, creates a uniquely named task, and retrieves it.
+# Report request timings, throughput, HTTP error rate, and handler occupancy.
 
 import json
 import math
@@ -20,8 +18,13 @@ from threading import Lock, Thread
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+# Keep tasks in memory for the duration of this demonstration.
+# Locks protect shared data accessed by concurrent server threads.
 tasks = {}
 task_lock = Lock()
+
+# Accumulate elapsed handler time across requests.
+# This includes simulated delays and does not measure CPU utilization.
 server_busy_seconds = 0.0
 busy_lock = Lock()
 
@@ -32,24 +35,29 @@ class Handler(BaseHTTPRequestHandler):
         started = time.perf_counter()
 
         try:
+            # Read and decode the JSON request body.
             length = int(self.headers.get("Content-Length", "0"))
             data = json.loads(self.rfile.read(length) or b"{}")
 
+            # Return a fixed demonstration token without validating credentials.
             if self.path == "/login":
                 self.respond(200, {"token": "test-token"})
                 return
 
             if self.path == "/tasks":
+                # Require the demonstration token before creating a task.
                 if self.headers.get("Authorization") != "Bearer test-token":
                     self.respond(401, {"error": "Unauthorized"})
                     return
 
+                # Reject missing or whitespace-only task titles.
                 title = data.get("title", "").strip()
                 if not title:
                     self.respond(400, {"error": "Title required"})
                     return
 
-                time.sleep(0.02)  # Simulated server work
+                # Simulate processing time before storing the task.
+                time.sleep(0.02)
                 task_id = uuid.uuid4().hex
 
                 with task_lock:
@@ -60,6 +68,7 @@ class Handler(BaseHTTPRequestHandler):
 
             self.respond(404, {"error": "Not found"})
         finally:
+            # Record handler duration even when an operation returns early.
             with busy_lock:
                 server_busy_seconds += time.perf_counter() - started
 
@@ -68,10 +77,12 @@ class Handler(BaseHTTPRequestHandler):
         started = time.perf_counter()
 
         try:
+            # Apply the same token check to retrieval requests.
             if self.headers.get("Authorization") != "Bearer test-token":
                 self.respond(401, {"error": "Unauthorized"})
                 return
 
+            # Extract the task ID from the expected /tasks/<id> path.
             task_id = self.path.removeprefix("/tasks/")
             with task_lock:
                 title = tasks.get(task_id)
@@ -79,6 +90,7 @@ class Handler(BaseHTTPRequestHandler):
             if title is None:
                 self.respond(404, {"error": "Task not found"})
             else:
+                # Simulate a shorter processing delay for retrieval.
                 time.sleep(0.01)
                 self.respond(200, {"id": task_id, "title": title})
         finally:
@@ -86,6 +98,7 @@ class Handler(BaseHTTPRequestHandler):
                 server_busy_seconds += time.perf_counter() - started
 
     def respond(self, status, data):
+        # Serialize response data and send its status, headers, and body.
         body = json.dumps(data).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -94,9 +107,11 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, format, *args):
+        # Suppress individual request logs so the summary stays readable.
         pass
 
 
+# Start the service on a local port chosen by the operating system.
 server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
 server_thread = Thread(target=server.serve_forever, daemon=True)
 server_thread.start()
@@ -104,6 +119,7 @@ base_url = f"http://127.0.0.1:{server.server_port}"
 
 
 def timed_request(method, path, payload=None, token=None):
+    # Build a JSON request and include authorization when supplied.
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -115,10 +131,13 @@ def timed_request(method, path, payload=None, token=None):
         method=method,
     )
 
+    # Measure from sending the request through reading and parsing the body.
     started = time.perf_counter()
     try:
         response = urlopen(request, timeout=5)
     except HTTPError as error:
+        # Preserve HTTP error responses for inclusion in the measurements.
+        # Connection errors and timeouts still propagate to the caller.
         response = error
 
     with response:
@@ -132,6 +151,7 @@ def timed_request(method, path, payload=None, token=None):
 
 
 def user_iteration(user_number, iteration_number, think_time_seconds=0.05):
+    # Collect separate measurements for each action in this user journey.
     measurements = []
 
     login = timed_request("POST", "/login", {"user": user_number})
@@ -139,24 +159,30 @@ def user_iteration(user_number, iteration_number, think_time_seconds=0.05):
     if login["status"] != 200:
         return measurements
 
-    token = login["body"]["token"]  # Correlation: extract token
+    # Correlate requests by extracting the token from the login response.
+    token = login["body"]["token"]
 
-    time.sleep(think_time_seconds)  # Timer: simulated user think time
+    # Simulate a user pausing before the next action.
+    # Think time affects journey duration but is outside request latency.
+    time.sleep(think_time_seconds)
 
+    # Parameterize the title so iterations use distinctive task data.
     title = f"User {user_number} task {iteration_number}-{uuid.uuid4().hex[:6]}"
     created = timed_request("POST", "/tasks", {"title": title}, token)
     measurements.append(created)
     if created["status"] != 201:
         return measurements
 
-    task_id = created["body"]["id"]  # Correlation: extract task ID
+    # Use the returned task ID rather than assuming a known identifier.
+    task_id = created["body"]["id"]
 
     time.sleep(think_time_seconds)
 
     retrieved = timed_request("GET", f"/tasks/{task_id}", token=token)
     measurements.append(retrieved)
 
-    # Assertions check correctness, not just HTTP speed.
+    # Check correctness as well as speed.
+    # A failed assertion stops the run rather than entering the error-rate total.
     assert retrieved["status"] == 200
     assert retrieved["body"]["title"] == title
 
@@ -165,6 +191,7 @@ def user_iteration(user_number, iteration_number, think_time_seconds=0.05):
 
 def closed_load(users=5, iterations_per_user=4):
     def virtual_user(user_number):
+        # Each user finishes one journey before starting the next.
         results = []
         for iteration in range(iterations_per_user):
             results.extend(user_iteration(user_number, iteration))
@@ -172,8 +199,13 @@ def closed_load(users=5, iterations_per_user=4):
 
     started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=users) as pool:
+        # Run a fixed population of users concurrently.
         futures = [pool.submit(virtual_user, user) for user in range(users)]
-        results = [item for future in as_completed(futures) for item in future.result()]
+        results = [
+            item
+            for future in as_completed(futures)
+            for item in future.result()
+        ]
 
     return results, time.perf_counter() - started
 
@@ -183,27 +215,43 @@ def open_load(rate_per_second=5, duration_seconds=3, max_workers=20):
     futures = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        # Schedule journey arrivals independently of earlier completions.
+        # Each journey can generate three HTTP requests.
         count = math.ceil(rate_per_second * duration_seconds)
 
         for index in range(count):
             target_time = started + index / rate_per_second
             time.sleep(max(0, target_time - time.perf_counter()))
+
+            # If all workers are occupied, submitted journeys wait in the queue.
             futures.append(pool.submit(user_iteration, index, 0))
 
-        results = [item for future in as_completed(futures) for item in future.result()]
+        # Wait for all submitted journeys, including those finishing
+        # after the arrival window ends.
+        results = [
+            item
+            for future in as_completed(futures)
+            for item in future.result()
+        ]
 
     return results, time.perf_counter() - started
 
 
 def percentile(values, percent):
+    # Calculate a percentile by interpolating between adjacent sorted values.
     ordered = sorted(values)
     position = (len(ordered) - 1) * percent / 100
     lower = math.floor(position)
     upper = math.ceil(position)
-    return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
+    return (
+        ordered[lower]
+        + (ordered[upper] - ordered[lower]) * (position - lower)
+    )
 
 
 def report(name, results, elapsed, busy_before):
+    # Summarize all measured endpoints together.
+    # HTTP statuses of 400 or higher count toward this error rate.
     latencies = [result["latency_ms"] for result in results]
     failures = sum(result["status"] >= 400 for result in results)
     busy_delta = server_busy_seconds - busy_before
@@ -219,13 +267,18 @@ def report(name, results, elapsed, busy_before):
     print(f"95th percentile:    {percentile(latencies, 95):.2f} ms")
     print(f"Standard deviation:{statistics.pstdev(latencies):.2f} ms")
     print(f"Server busy time:   {busy_delta:.2f} cumulative seconds")
+
+    # Divide cumulative handler time by elapsed wall time to estimate
+    # average concurrent handler occupancy. Overlapping handlers can
+    # produce a value above 1; sleeping handlers also contribute.
     print(
         "Busy-equivalent workers: "
         f"{busy_delta / elapsed:.2f}"
-    )  # Not CPU utilization; handlers can overlap and sleep.
+    )
 
 
 try:
+    # Capture a baseline so each profile reports its own handler time.
     before = server_busy_seconds
     results, elapsed = closed_load()
     report("CLOSED LOAD PROFILE", results, elapsed, before)
@@ -234,6 +287,7 @@ try:
     results, elapsed = open_load()
     report("OPEN LOAD PROFILE", results, elapsed, before)
 finally:
+    # Stop the local service and release resources even if testing fails.
     server.shutdown()
     server.server_close()
     server_thread.join()

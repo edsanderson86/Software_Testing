@@ -1,10 +1,13 @@
+# Use SQLite to save tasks between application runs.
 import sqlite3
 
 
 class TaskStore:
     def __init__(self, database_path):
+        # Keep the database location for subsequent read and write operations.
         self.database_path = database_path
 
+        # Prepare the table without replacing any existing tasks.
         with sqlite3.connect(self.database_path) as connection:
             connection.execute(
                 """
@@ -15,29 +18,5 @@ class TaskStore:
                 )
                 """
             )
-
-    def add(self, title):
-        title = title.strip()
-        if not title:
-            raise ValueError("Task title cannot be blank")
-
-        with sqlite3.connect(self.database_path) as connection:
-            connection.execute(
-                "INSERT INTO tasks (title) VALUES (?)",
-                (title,),
-            )
-
-    def list_tasks(self):
-        with sqlite3.connect(self.database_path) as connection:
-            return connection.execute(
-                "SELECT id, title, completed FROM tasks ORDER BY id"
-            ).fetchall()
-
-
-store = TaskStore("review_tasks.db")
-store.add("Write README")
-print(store.list_tasks())
-
-# Open the database again to demonstrate that the task was saved.
-reopened_store = TaskStore("review_tasks.db")
-print("After reopening:", reopened_store.list_tasks())
+            # Each task has a unique ID, a required title, and a completion
+            #

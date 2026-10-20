@@ -1,10 +1,11 @@
 # build_trello_collection.py
 # Run: python build_trello_collection.py
-# Import the generated trello_crud.postman_collection.json into Postman.
-# Set collection variables apiKey and apiToken locally, then run the collection.
-# The run creates a disposable board and deletes it at the end.
+# Import trello_crud.postman_collection.json into Postman.
+# Set apiKey and apiToken locally, then run requests in numbered order.
+# The collection creates a disposable board and attempts to delete it at the end.
+# If execution stops early, the board may remain and require manual cleanup.
 #
-# Trello endpoint reference:
+# Trello endpoint references:
 # https://developer.atlassian.com/cloud/trello/rest/api-group-boards/
 # https://developer.atlassian.com/cloud/trello/rest/api-group-lists/
 # https://developer.atlassian.com/cloud/trello/rest/api-group-cards/
@@ -14,19 +15,24 @@ from pathlib import Path
 
 
 def script(*lines):
+    # Package JavaScript lines in the format used by Postman event scripts.
     return {"type": "text/javascript", "exec": list(lines)}
 
 
 def request(name, method, path, params=None, before=None, tests=None):
+    # Include credentials as variable placeholders rather than saved secrets.
     query = [
         {"key": "key", "value": "{{apiKey}}"},
         {"key": "token", "value": "{{apiToken}}"},
     ]
+
+    # Add any parameters needed by this particular endpoint.
     query += [
         {"key": key, "value": value}
         for key, value in (params or {}).items()
     ]
 
+    # Build a collection item with its method, structured URL, and event list.
     item = {
         "name": name,
         "request": {
@@ -42,11 +48,14 @@ def request(name, method, path, params=None, before=None, tests=None):
         "event": [],
     }
 
+    # Attach setup logic that Postman runs before sending the request.
     if before:
         item["event"].append({
             "listen": "prerequest",
             "script": script(*before),
         })
+
+    # Attach checks that Postman runs after receiving the response.
     if tests:
         item["event"].append({
             "listen": "test",
@@ -56,7 +65,11 @@ def request(name, method, path, params=None, before=None, tests=None):
     return item
 
 
+# Arrange requests in dependency order: create the resources first,
+# retrieve and update them, then remove the disposable test resources.
 items = [
+    # Create a uniquely named board without default lists.
+    # Store its ID so later requests can refer to this run's board.
     request(
         "01 Create board",
         "POST",
@@ -79,6 +92,8 @@ items = [
             "if (board.id) pm.collectionVariables.set('boardId', board.id);",
         ],
     ),
+
+    # Create a list on the new board and save its ID for card creation.
     request(
         "02 Create list",
         "POST",
@@ -91,6 +106,8 @@ items = [
             "if (list.id) pm.collectionVariables.set('listId', list.id);",
         ],
     ),
+
+    # Create a card in the list and verify its parent list and title.
     request(
         "03 Create card",
         "POST",
@@ -104,6 +121,8 @@ items = [
             "if (card.id) pm.collectionVariables.set('cardId', card.id);",
         ],
     ),
+
+    # Retrieve the board independently of the creation response.
     request(
         "04 Read board",
         "GET",
@@ -113,6 +132,8 @@ items = [
             "pm.test('Board ID matches', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('boardId')));",
         ],
     ),
+
+    # Retrieve the list and check its original name.
     request(
         "05 Read list",
         "GET",
@@ -122,6 +143,8 @@ items = [
             "pm.test('List name matches', () => pm.expect(pm.response.json().name).to.eql('To Do'));",
         ],
     ),
+
+    # Retrieve the card and compare its name with the generated title.
     request(
         "06 Read card",
         "GET",
@@ -131,6 +154,8 @@ items = [
             "pm.test('Card name matches', () => pm.expect(pm.response.json().name).to.eql(pm.collectionVariables.get('cardName')));",
         ],
     ),
+
+    # Rename the board and check the value returned by the update.
     request(
         "07 Update board",
         "PUT",
@@ -141,6 +166,8 @@ items = [
             "pm.test('New board name returned', () => pm.expect(pm.response.json().name).to.eql(pm.collectionVariables.get('updatedBoardName')));",
         ],
     ),
+
+    # Rename the list to represent work moving into progress.
     request(
         "08 Update list",
         "PUT",
@@ -151,6 +178,9 @@ items = [
             "pm.test('New list name returned', () => pm.expect(pm.response.json().name).to.eql('In Progress'));",
         ],
     ),
+
+    # Change the card's name and description.
+    # The response check below verifies the name only.
     request(
         "09 Update card",
         "PUT",
@@ -161,6 +191,9 @@ items = [
             "pm.test('New card name returned', () => pm.expect(pm.response.json().name).to.eql('Updated ' + pm.collectionVariables.get('cardName')));",
         ],
     ),
+
+    # Read the board again to confirm that its renamed value persisted.
+    # This request does not independently confirm list or card updates.
     request(
         "10 Confirm updates",
         "GET",
@@ -172,6 +205,8 @@ items = [
             "});",
         ],
     ),
+
+    # Delete the card before removing its containing board.
     request(
         "11 Delete card",
         "DELETE",
@@ -180,6 +215,8 @@ items = [
             "pm.test('Card deleted', () => pm.response.to.have.status(200));",
         ],
     ),
+
+    # Check that the deleted card can no longer be retrieved.
     request(
         "12 Confirm card deletion",
         "GET",
@@ -188,6 +225,8 @@ items = [
             "pm.test('Deleted card is unavailable', () => pm.response.to.have.status(404));",
         ],
     ),
+
+    # Delete the disposable board, including its contained list.
     request(
         "13 Delete board",
         "DELETE",
@@ -196,6 +235,9 @@ items = [
             "pm.test('Board deleted', () => pm.response.to.have.status(200));",
         ],
     ),
+
+    # Check that the board is unavailable, then clear stored resource IDs.
+    # Clearing variables does not itself remove any server resources.
     request(
         "14 Confirm board deletion",
         "GET",
@@ -209,6 +251,7 @@ items = [
     ),
 ]
 
+# Assemble collection metadata, variable placeholders, and ordered requests.
 collection = {
     "info": {
         "name": "Trello API — Board, List and Card CRUD",
@@ -222,6 +265,8 @@ collection = {
             "collection/v2.1.0/collection.json"
         ),
     },
+
+    # Leave credentials and generated values empty in the exported collection.
     "variable": [
         {"key": key, "value": ""}
         for key in (
@@ -232,6 +277,8 @@ collection = {
     "item": items,
 }
 
+# Write formatted JSON in the current working directory.
+# Running this builder creates the file; API requests run later in Postman.
 output = Path("trello_crud.postman_collection.json")
 output.write_text(json.dumps(collection, indent=2), encoding="utf-8")
 print(f"Created {output}")

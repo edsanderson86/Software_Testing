@@ -1,9 +1,14 @@
 # flight_booking_test_design.py
 # Run with: python flight_booking_test_design.py
+# Present a test design covering flight search, booking, cancellation,
+# persistence, concurrency, accessibility, and access control.
+# This script prints test specifications; it does not execute the tests.
 
 from dataclasses import dataclass
 
 
+# Use a consistent structure so each case explains its purpose,
+# importance, required setup, actions, and expected outcome.
 @dataclass
 class TestCase:
     id: str
@@ -15,7 +20,10 @@ class TestCase:
     expected_result: str
 
 
+# Assign stable identifiers so cases can be referenced in results and defects.
+# Priorities guide execution order but do not enforce it in this script.
 test_cases = [
+    # Verify the main search journey using a known route with available seats.
     TestCase(
         "FB-001",
         "Search",
@@ -29,6 +37,8 @@ test_cases = [
         ],
         "The matching flight appears with its departure time and seats.",
     ),
+
+    # Check that an empty result is explained clearly to the user.
     TestCase(
         "FB-002",
         "Search",
@@ -41,6 +51,8 @@ test_cases = [
         ],
         "A clear no-results message appears.",
     ),
+
+    # Exercise the availability boundary between one remaining seat and none.
     TestCase(
         "FB-003",
         "Booking",
@@ -54,6 +66,8 @@ test_cases = [
         ],
         "One booking is created and available seats becomes zero.",
     ),
+
+    # Verify rejection at zero availability without changing stored data.
     TestCase(
         "FB-004",
         "Booking",
@@ -66,6 +80,8 @@ test_cases = [
         ],
         "No booking is created and the seat count remains zero.",
     ),
+
+    # Ensure invalid passenger details do not consume a seat.
     TestCase(
         "FB-005",
         "Booking",
@@ -79,6 +95,8 @@ test_cases = [
         ],
         "A validation message appears; no seat is taken.",
     ),
+
+    # Verify that cancellation updates both booking status and availability.
     TestCase(
         "FB-006",
         "Cancellation",
@@ -92,6 +110,9 @@ test_cases = [
         ],
         "Booking status becomes cancelled and one seat is restored.",
     ),
+
+    # Check that a repeated sequential cancellation cannot inflate availability.
+    # Simultaneous cancellation requests would require a separate case.
     TestCase(
         "FB-007",
         "Cancellation",
@@ -104,6 +125,8 @@ test_cases = [
         ],
         "No second seat is restored.",
     ),
+
+    # Verify persistence by restarting and retrieving an existing booking.
     TestCase(
         "FB-008",
         "Data",
@@ -117,6 +140,9 @@ test_cases = [
         ],
         "The booking and its status are still present.",
     ),
+
+    # Exercise competing requests for a single remaining seat.
+    # Execution should coordinate requests to overlap and inspect stored results.
     TestCase(
         "FB-009",
         "Concurrency",
@@ -129,6 +155,8 @@ test_cases = [
         ],
         "Exactly one booking succeeds; seats never drops below zero.",
     ),
+
+    # Assess keyboard operation and focus visibility in a graphical interface.
     TestCase(
         "FB-010",
         "Accessibility",
@@ -142,6 +170,8 @@ test_cases = [
         ],
         "Controls are reachable, focus is visible, and booking succeeds.",
     ),
+
+    # Check that validation feedback is available through a screen reader.
     TestCase(
         "FB-011",
         "Accessibility",
@@ -154,6 +184,9 @@ test_cases = [
         ],
         "The error is announced and identifies the passenger-name field.",
     ),
+
+    # Verify booking ownership checks using two controlled test accounts.
+    # Knowing a reference alone must not expose another account's booking.
     TestCase(
         "FB-012",
         "Security",
@@ -169,6 +202,8 @@ test_cases = [
 ]
 
 
+# Print each specification with its setup and numbered actions.
+# No result is assigned because the actions have not been executed.
 for case in test_cases:
     print(f"\n{case.id} | {case.feature} | {case.priority}")
     print("Title:", case.title)
@@ -179,5 +214,7 @@ for case in test_cases:
 
     print("Expected:", case.expected_result)
 
+# Summarize the number of designed cases and their distinct feature labels.
+# Listed features indicate planned coverage rather than verified behaviour.
 print(f"\nTotal test cases: {len(test_cases)}")
 print("Features covered:", sorted({case.feature for case in test_cases}))
