@@ -1,0 +1,152 @@
+Feature: Storefront checkout
+
+  @US-13 @BR-17 @TC-CHECKOUT-01
+  Scenario: Start checkout with one basket item
+    Given I am signed in as a customer
+    And my basket contains 1 unit of "Ceramic Mug"
+    When I proceed to checkout
+    Then I can enter my delivery address at checkout
+
+  @US-14 @BR-18 @TC-ADDRESS-01
+  Scenario: Continue with a complete delivery address
+    Given I am a logged-in customer checking out with an item in my basket
+    When I submit this delivery address
+      | field          | value           |
+      | Recipient name | Sam Taylor      |
+      | Address line 1 | 12 Example Road |
+      | Town or city   | London          |
+      | Postcode       | SW1A 1AA        |
+      | Country        | United Kingdom  |
+    Then I can continue to review my order before payment
+
+  @US-14 @BR-18
+  Scenario Outline: Block order placement when a required address field is blank
+    Given I am a logged-in customer checking out with an item in my basket
+    And I have filled in all required delivery address fields except "<field>"
+    When I try to continue checkout with that delivery address
+    Then I cannot proceed to place the order until I complete "<field>"
+
+    @TC-ADDRESS-02
+    Examples: Missing recipient name
+      | field          |
+      | Recipient name |
+
+    @TC-ADDRESS-03
+    Examples: Missing address line 1
+      | field          |
+      | Address line 1 |
+
+    @TC-ADDRESS-04
+    Examples: Missing town or city
+      | field        |
+      | Town or city |
+
+    @TC-ADDRESS-05
+    Examples: Missing postcode
+      | field    |
+      | Postcode |
+
+    @TC-ADDRESS-06
+    Examples: Missing country
+      | field   |
+      | Country |
+
+  @US-15 @BR-19 @BR-21
+  Scenario Outline: Calculate delivery and the final total at the free delivery boundary
+    Given I am a logged-in customer at checkout with a complete delivery address
+    And my product subtotal is <subtotal>
+    When I review the order before payment
+    Then the displayed product subtotal is "<subtotal>"
+    And the displayed delivery charge is "<delivery>"
+    And the displayed final total is "<total>"
+
+    @TC-DELIVERY-01
+    Examples: One penny below the free delivery threshold
+      | subtotal | delivery | total  |
+      | £49.99   | £3.99    | £53.98 |
+
+    @TC-DELIVERY-02
+    Examples: Exactly at the free delivery threshold
+      | subtotal | delivery | total  |
+      | £50.00   | £0.00    | £50.00 |
+
+    @TC-DELIVERY-03
+    Examples: One penny above the free delivery threshold
+      | subtotal | delivery | total  |
+      | £50.01   | £0.00    | £50.01 |
+
+  @US-15 @BR-20 @BR-21 @TC-REVIEW-01
+  Scenario: Review the delivery address, items and totals before paying
+    Given I am a logged-in customer at checkout
+    And I entered this delivery address
+      | field          | value           |
+      | Recipient name | Sam Taylor      |
+      | Address line 1 | 12 Example Road |
+      | Town or city   | London          |
+      | Postcode       | SW1A 1AA        |
+      | Country        | United Kingdom  |
+    And my basket contains these items
+      | product      | quantity | unit_price |
+      | Ceramic Mug  | 2        | £8.50      |
+      | Travel Towel | 1        | £12.00     |
+    When I review the order before payment
+    Then I see the delivery address I entered
+    And I see these items and quantities
+      | product      | quantity |
+      | Ceramic Mug  | 2        |
+      | Travel Towel | 1        |
+    And I see these amounts
+      | label             | amount |
+      | Product subtotal  | £29.00 |
+      | Delivery charge   | £3.99  |
+      | Final order total | £32.99 |
+
+  @US-16 @BR-22
+  Scenario Outline: Submit an order payment using a supported card type
+    Given I am a logged-in customer ready to pay £32.99 at checkout
+    And the integrated payment provider supplies a valid <card_type> test card
+    When I submit the payment using that test card
+    Then the integrated payment provider accepts the £32.99 payment
+
+    @TC-CARD-01
+    Examples: Debit card
+      | card_type |
+      | debit     |
+
+    @TC-CARD-02
+    Examples: Credit card
+      | card_type |
+      | credit    |
+
+  @US-17 @BR-23 @TC-ORDER-01
+  Scenario: Create an order and show confirmation after successful payment
+    Given I am a logged-in customer ready to pay £32.99 at checkout
+    And the integrated payment provider is set to return a successful result
+    When I submit the card payment
+    Then an order is created for my purchase
+    And the order confirmation displays the reference for that order
+    And the order confirmation displays a final total of £32.99
+
+  @US-17 @BR-23 @TC-ORDER-02
+  Scenario: Assign a different order reference to a separate purchase
+    Given I have an existing order with reference "ORD-1001"
+    And I am ready to pay for a separate order
+    And the integrated payment provider is set to return a successful result
+    When I submit the card payment for the new purchase
+    Then the new order confirmation shows a non-empty order reference
+    And that reference differs from "ORD-1001"
+
+  @US-17 @BR-24 @TC-ORDER-03
+  Scenario: Retain the basket when payment fails
+    Given I am a logged-in customer ready to pay for these basket items
+      | product      | quantity |
+      | Ceramic Mug  | 2        |
+      | Travel Towel | 1        |
+    And the integrated payment provider is set to return a failed result
+    When I submit the card payment
+    Then no order is created for this payment attempt
+    And my basket still contains exactly these items
+      | product      | quantity |
+      | Ceramic Mug  | 2        |
+      | Travel Towel | 1        |
+    And I see the message "Payment failed. Please try again."

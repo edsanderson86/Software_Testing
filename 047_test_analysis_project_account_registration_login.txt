@@ -1,0 +1,86 @@
+Feature: Storefront account registration, login and password reset
+
+  @US-01 @BR-01 @BR-02 @BR-03 @TC-REG-01
+  Scenario: Register with an unused email and an 8-character password
+    Given no customer account uses "sam@example.com" in any letter case
+    When I register as "Sam Taylor" with email "sam@example.com" and password "RunFast1"
+    Then a customer account is created for "Sam Taylor" with email "sam@example.com"
+
+  @US-01 @BR-02
+  Scenario Outline: Reject a duplicate email address regardless of letter case
+    Given a customer account already uses "sam@example.com"
+    When I register as "Alex Morgan" with email "<email>" and password "RunFast1"
+    Then the registration is rejected
+    And no new customer account is created
+
+    @TC-REG-02
+    Examples: Same letter case
+      | email           |
+      | sam@example.com |
+
+    @TC-REG-03
+    Examples: Different letter case
+      | email           |
+      | SAM@EXAMPLE.COM |
+
+  @US-01 @BR-03
+  Scenario Outline: Reject a password that fails one registration rule
+    Given no customer account uses "sam@example.com" in any letter case
+    When I register as "Sam Taylor" with email "sam@example.com" and password "<password>"
+    Then the registration is rejected
+    And no customer account is created for "sam@example.com"
+
+    @TC-REG-04
+    Examples: Fewer than 8 characters
+      | password |
+      | RunFas1  |
+
+    @TC-REG-05
+    Examples: No uppercase letter
+      | password |
+      | runfast1 |
+
+    @TC-REG-06
+    Examples: No lowercase letter
+      | password |
+      | RUNFAST1 |
+
+    @TC-REG-07
+    Examples: No digit
+      | password |
+      | RunFasts |
+
+  @US-02 @BR-04 @TC-LOGIN-01
+  Scenario: Log in with correct credentials
+    Given I am signed out
+    And a customer account uses "sam@example.com" and password "RunFast1"
+    When I submit "sam@example.com" and "RunFast1" on the login form
+    Then I am signed in to the customer account for "sam@example.com"
+
+  @US-02 @BR-05 @TC-LOGIN-02
+  Scenario: Try to log in with the wrong password
+    Given I am signed out
+    And a customer account uses "sam@example.com" and password "RunFast1"
+    When I submit "sam@example.com" and "RunFast2" on the login form
+    Then I see the message "Email or password is incorrect."
+    And I remain signed out
+
+  @US-02 @BR-05 @TC-LOGIN-03
+  Scenario: Try to log in with an unregistered email address
+    Given I am signed out
+    And no customer account uses "alex@example.com" in any letter case
+    When I submit "alex@example.com" and "RunFast1" on the login form
+    Then I see the message "Email or password is incorrect."
+    And I remain signed out
+
+  @US-03 @BR-06 @TC-RESET-01
+  Scenario: Request a password reset for a registered email address
+    Given a customer account uses "sam@example.com"
+    When I submit "sam@example.com" on the password reset request form
+    Then I see a confirmation stating that reset instructions will be sent if the address is registered
+
+  @US-03 @BR-06 @TC-RESET-02 @needs-refinement
+  Scenario: Request a password reset for an unregistered email address
+    Given no customer account uses "alex@example.com" in any letter case
+    When I submit "alex@example.com" on the password reset request form
+    Then I see the same conditional confirmation shown for a registered email address

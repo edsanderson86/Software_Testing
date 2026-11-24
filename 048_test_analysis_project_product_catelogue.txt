@@ -1,0 +1,111 @@
+Feature: Storefront product catalogue
+
+  @US-04 @BR-07
+  Scenario Outline: Display product information and stock status
+    Given the catalogue contains "<name>" with description "<description>"
+    And its unit price is <price> GBP and its stock status is "<stock_status>"
+    When I view the product in the catalogue
+    Then I see its name "<name>" and description "<description>"
+    And I see its unit price of <price> in GBP
+    And I see that it is "<stock_status>"
+
+    @TC-CAT-01
+    Examples: In-stock product
+      | name         | description                | price | stock_status |
+      | Ceramic Mug  | A blue 350 ml ceramic mug. | 8.50  | In stock     |
+
+    @TC-CAT-02
+    Examples: Out-of-stock product
+      | name         | description              | price | stock_status |
+      | Travel Towel | A quick-drying towel.    | 12.00 | Out of stock |
+
+  @US-05 @BR-08
+  Rule: Search matches terms within product names regardless of letter case
+
+    Background:
+      Given the catalogue contains these products
+        | name                | description               |
+        | Blue Travel Mug     | A 350 ml insulated mug.   |
+        | Red Travel Mug      | A 500 ml insulated mug.   |
+        | Insulated Bottle    | Fits a travel mug holder. |
+
+    @TC-SEARCH-01
+    Scenario: Search using a full product name
+      When I search for "Blue Travel Mug"
+      Then the only result is "Blue Travel Mug"
+
+    @TC-SEARCH-02
+    Scenario: Search using a term within a product name
+      When I search for "Travel"
+      Then the results contain exactly these products in any order
+        | name            |
+        | Blue Travel Mug |
+        | Red Travel Mug  |
+
+    @TC-SEARCH-03
+    Scenario: Search using different letter case
+      When I search for "tRaVeL"
+      Then the results contain exactly these products in any order
+        | name            |
+        | Blue Travel Mug |
+        | Red Travel Mug  |
+
+    @TC-SEARCH-04
+    Scenario: Search for a term that appears in no product name
+      When I search for "Kettle"
+      Then there are zero product results
+
+  @US-06 @BR-09
+  Scenario Outline: Filter products using an inclusive price range
+    Given the catalogue contains a product named "Cotton Tote" priced at <price> GBP
+    When I filter by a minimum price of 10.00 GBP and a maximum price of 20.00 GBP
+    Then "Cotton Tote" is <result> in the filtered results
+
+    @TC-PRICE-01
+    Examples: One penny below the minimum
+      | price | result   |
+      | 9.99  | excluded |
+
+    @TC-PRICE-02
+    Examples: Exactly at the minimum
+      | price | result   |
+      | 10.00 | included |
+
+    @TC-PRICE-03
+    Examples: Between the minimum and maximum
+      | price | result   |
+      | 15.00 | included |
+
+    @TC-PRICE-04
+    Examples: Exactly at the maximum
+      | price | result   |
+      | 20.00 | included |
+
+    @TC-PRICE-05
+    Examples: One penny above the maximum
+      | price | result   |
+      | 20.01 | excluded |
+
+  @US-07 @BR-10
+  Scenario Outline: Sort catalogue results by numeric unit price
+    Given the catalogue results currently appear in this order
+      | product         | unit_price_gbp |
+      | Travel Towel    | 12.00          |
+      | Ceramic Mug     | 8.50           |
+      | Thermal Flask   | 100.00         |
+    When I sort the results by price in <direction> order
+    Then the results appear in this order
+      | position | product  |
+      | 1        | <first>  |
+      | 2        | <second> |
+      | 3        | <third>  |
+
+    @TC-SORT-01
+    Examples: Lowest price first
+      | direction | first       | second        | third         |
+      | ascending | Ceramic Mug | Travel Towel  | Thermal Flask |
+
+    @TC-SORT-02
+    Examples: Highest price first
+      | direction  | first         | second        | third       |
+      | descending | Thermal Flask | Travel Towel  | Ceramic Mug |

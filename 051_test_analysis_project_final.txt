@@ -1,0 +1,848 @@
+Feature: Storefront customer journey
+  Visitors can create an account, find products, build a basket and pay by card.
+  Customers can return to a saved basket and see whether their payment created an order.
+
+  Scenarios and example rows are the test conditions.
+  Story, business requirement and test condition IDs provide traceability.
+  Proposed refinements are tagged @proposed.
+  Use test accounts, a test mailbox and the payment provider's sandbox.
+
+  # A. Account registration and login
+
+  @US-01 @BR-01 @BR-02 @BR-03
+  Rule: Visitors can register a customer account
+    As a storefront visitor
+    I want to register with my full name, email address and password
+    So that I can create a customer account
+
+    @TC-REG-01
+    Scenario: Register with an unused email and an eight-character password
+      Given no customer account uses "sam@example.com" in any letter case
+      When I submit registration for "Sam Taylor" with email "sam@example.com" and password "RunFast1"
+      Then a customer account exists for "Sam Taylor" with email "sam@example.com"
+
+    Scenario Outline: Reject an email already in use regardless of letter case
+      Given a customer account already uses "sam@example.com"
+      When I submit registration for "Alex Morgan" with email "<email>" and password "RunFast1"
+      Then registration is rejected
+      And no new customer account is created
+
+      Examples:
+        | case      | email           |
+        | TC-REG-02 | sam@example.com |
+        | TC-REG-03 | SAM@EXAMPLE.COM |
+
+    Scenario Outline: Reject a password that fails one password rule
+      Given no customer account uses "sam@example.com"
+      When I submit registration for "Sam Taylor" with email "sam@example.com" and password "<password>"
+      Then registration is rejected
+      And no customer account is created for "sam@example.com"
+
+      Examples:
+        | case      | password | rule violated       |
+        | TC-REG-04 | RunFas1  | Minimum length      |
+        | TC-REG-05 | runfast1 | Uppercase required  |
+        | TC-REG-06 | RUNFAST1 | Lowercase required  |
+        | TC-REG-07 | RunFasts | Digit required      |
+
+    @proposed
+    Scenario Outline: Show a field error for invalid registration details
+      Given I have entered valid registration details with an unused email address
+      And I replace the "<field>" value with "<value>"
+      When I submit the registration form
+      Then I remain on the registration form
+      And I see "<message>" beside "<field>"
+      And no customer account is created
+
+      Examples:
+        | case      | field         | value | message                                                                    |
+        | TC-REG-08 | Full name     |       | Enter your full name.                                                      |
+        | TC-REG-09 | Email address |       | Enter your email address.                                                  |
+        | TC-REG-10 | Password      |       | Enter your password.                                                       |
+        | TC-REG-11 | Email address | sam@  | Enter a valid email address.                                               |
+        | TC-REG-12 | Password      | abc   | Use at least 8 characters, including an uppercase letter, a lowercase letter and a number. |
+
+    @proposed @TC-REG-13
+    Scenario: Show sign-in and reset options for a duplicate email
+      Given a customer account already uses "sam@example.com"
+      When I submit registration for "Alex Morgan" with email "SAM@EXAMPLE.COM" and password "RunFast1"
+      Then I see "This email address is already registered." beside "Email address"
+      And I see links labelled "Log in" and "Reset password"
+
+  @US-02 @BR-04 @BR-05
+  Rule: Registered customers can log in
+    As a registered customer
+    I want to log in with my email address and password
+    So that I can access my account
+
+    @TC-LOGIN-01
+    Scenario: Log in with correct credentials
+      Given I am signed out
+      And "sam@example.com" is registered with password "RunFast1"
+      When I submit "sam@example.com" and "RunFast1" on the login form
+      Then I am signed in to the account for "sam@example.com"
+
+    Scenario Outline: Show the same login error for incorrect details
+      Given I am signed out
+      And "sam@example.com" is registered with password "RunFast1"
+      And "alex@example.com" is unregistered
+      When I submit "<email>" and "<password>" on the login form
+      Then I see "Email or password is incorrect."
+      And I remain signed out
+
+      Examples:
+        | case        | email            | password |
+        | TC-LOGIN-02 | sam@example.com  | RunFast2 |
+        | TC-LOGIN-03 | alex@example.com | RunFast1 |
+
+    @proposed @TC-LOGIN-04
+    Scenario: Log in using a case variation of the registered email
+      Given I am signed out
+      And "sam@example.com" is registered with password "RunFast1"
+      When I submit "SAM@EXAMPLE.COM" and "RunFast1" on the login form
+      Then I am signed in to the account for "sam@example.com"
+
+    @proposed @TC-LOGIN-05
+    Scenario: Reject a password with different letter case
+      Given I am signed out
+      And "sam@example.com" is registered with password "RunFast1"
+      When I submit "sam@example.com" and "runFast1" on the login form
+      Then I see "Email or password is incorrect."
+      And I remain signed out
+
+  @US-03 @BR-06
+  Rule: Customers can request password reset instructions
+    As a registered customer who has forgotten my password
+    I want to request reset instructions using my email address
+    So that I can regain access to my account
+
+    @TC-RESET-01
+    Scenario: Confirm a request for a registered email address
+      Given "sam@example.com" is registered
+      When I request a password reset for "sam@example.com"
+      Then I see a confirmation stating that reset instructions will be sent if the address is registered
+
+    @proposed
+    Scenario Outline: Display the same confirmation for registered and unregistered addresses
+      Given "sam@example.com" is registered
+      And "alex@example.com" is unregistered
+      When I request a password reset for "<email>"
+      Then I see "If this email address is registered, we’ll send you instructions to reset your password."
+
+      Examples:
+        | case        | email            |
+        | TC-RESET-02 | alex@example.com |
+        | TC-RESET-03 | sam@example.com  |
+
+    @proposed
+    Scenario Outline: Deliver reset instructions for a registered address regardless of case
+      Given the registered address "sam@example.com" has a test inbox
+      When I request a password reset for "<email>"
+      Then the test inbox for "sam@example.com" receives a password reset email with instructions
+
+      Examples:
+        | case        | email           |
+        | TC-RESET-04 | sam@example.com |
+        | TC-RESET-05 | SAM@EXAMPLE.COM |
+
+    @proposed @TC-RESET-06
+    Scenario: Complete an unregistered reset request without sending email
+      Given "alex@example.com" is unregistered
+      When the password reset request for "alex@example.com" finishes processing
+      Then the test mail system records no reset email for that request
+
+  # B. Product catalogue
+
+  @US-04 @BR-07
+  Rule: Visitors can see product details and availability
+    As a storefront visitor
+    I want to see each product's name, description, unit price and stock status
+    So that I can compare products and see what is available
+
+    Scenario Outline: Display all required product details
+      Given the catalogue contains "<product>" with description "<description>"
+      And its unit price is <price> GBP and its stock state is "<stock>"
+      When I view the product in the catalogue
+      Then I see its name "<product>" and description "<description>"
+      And I see its unit price of <price> GBP and its "<stock>" stock state
+
+      Examples:
+        | case      | product      | description                 | price | stock        |
+        | TC-CAT-01 | Ceramic Mug  | A blue 350 ml ceramic mug.  | 8.50  | In stock     |
+        | TC-CAT-02 | Travel Towel | A quick-drying travel towel. | 12.00 | Out of stock |
+
+    @proposed
+    Scenario Outline: Show consistent product details on result cards
+      Given "Ceramic Mug" costs 8.50 GBP, is in stock and has description "A blue 350 ml ceramic mug."
+      And "Travel Towel" costs 12.00 GBP, is out of stock and has description "A quick-drying travel towel."
+      When I view "<results>" containing both products
+      Then the "Ceramic Mug" card shows its name, description, "£8.50" and "In stock"
+      And the "Travel Towel" card shows its name, description, "£12.00" and "Out of stock"
+
+      Examples:
+        | case      | results                |
+        | TC-CAT-03 | the unfiltered catalogue |
+        | TC-CAT-04 | search results          |
+        | TC-CAT-05 | price-filtered results  |
+
+  @US-05 @BR-08
+  Rule: Visitors can search by all or part of a product name
+    As a storefront visitor
+    I want to search without having to match the product name or letter case exactly
+    So that I can find products using the words I remember
+
+    Background:
+      Given the catalogue contains these products
+        | product          | description               | price  |
+        | Blue Travel Mug  | A 350 ml insulated mug.   | £15.00 |
+        | Red Travel Mug   | A 500 ml insulated mug.   | £10.00 |
+        | Insulated Bottle | Fits a travel mug holder. | £25.00 |
+
+    Scenario Outline: Match the search term anywhere in the product name
+      When I search for "<term>"
+      Then the results contain exactly "<products>" in any order
+
+      Examples:
+        | case         | term            | products                        |
+        | TC-SEARCH-01 | Blue Travel Mug | Blue Travel Mug                 |
+        | TC-SEARCH-02 | Travel          | Blue Travel Mug, Red Travel Mug |
+        | TC-SEARCH-03 | tRaVeL          | Blue Travel Mug, Red Travel Mug |
+
+    @TC-SEARCH-04
+    Scenario: Return no products when no name matches
+      When I search for "Kettle"
+      Then there are zero product results
+
+    @proposed @TC-SEARCH-05
+    Scenario: Show an empty state and keep the active criteria visible
+      Given I have applied a price range of £10.00 to £20.00
+      When I search for "Kettle"
+      Then I see "No products found."
+      And the search field still shows "Kettle"
+      And the price filter still shows £10.00 to £20.00
+
+    @proposed @TC-SEARCH-06
+    Scenario: Trim spaces around a search term
+      When I search for "  Travel  "
+      Then the results contain exactly "Blue Travel Mug, Red Travel Mug" in any order
+
+    @proposed
+    Scenario Outline: Clear a search while keeping the active price filter
+      Given I have applied a price range of £10.00 to £20.00
+      And I have searched for "Blue"
+      When I submit a search term consisting of <input>
+      Then the search is cleared
+      And the results contain exactly "Blue Travel Mug, Red Travel Mug" in any order
+
+      Examples:
+        | case         | input          |
+        | TC-SEARCH-07 | no characters  |
+        | TC-SEARCH-08 | three spaces   |
+
+  @US-06 @BR-09
+  Rule: Visitors can filter products by an inclusive price range
+    As a storefront visitor
+    I want to set a minimum and maximum price
+    So that I can find products within my budget
+
+    Scenario Outline: Include both boundaries of the selected price range
+      Given the catalogue contains "Cotton Tote" priced at <price>
+      When I apply a minimum price of £10.00 and a maximum price of £20.00
+      Then "Cotton Tote" is <result> in the filtered results
+
+      Examples:
+        | case        | price  | result   |
+        | TC-PRICE-01 | £9.99  | excluded |
+        | TC-PRICE-02 | £10.00 | included |
+        | TC-PRICE-03 | £15.00 | included |
+        | TC-PRICE-04 | £20.00 | included |
+        | TC-PRICE-05 | £20.01 | excluded |
+
+    @proposed
+    Scenario Outline: Apply open-ended, cleared and exact-price filters
+      Given the catalogue contains "Keyring" at £5.00, "Cotton Tote" at £10.00 and "Flask" at £20.00
+      And I have applied a price range of £5.00 to £10.00
+      When I apply minimum "<minimum>" and maximum "<maximum>"
+      Then the results contain exactly "<products>" in any order
+
+      Examples:
+        | case        | minimum | maximum | products                      |
+        | TC-PRICE-06 | blank   | £10.00  | Keyring, Cotton Tote          |
+        | TC-PRICE-07 | £10.00  | blank   | Cotton Tote, Flask            |
+        | TC-PRICE-08 | blank   | blank   | Keyring, Cotton Tote, Flask   |
+        | TC-PRICE-09 | £10.00  | £10.00  | Cotton Tote                   |
+
+    @proposed @TC-PRICE-10
+    Scenario: Keep the last valid results when the minimum exceeds the maximum
+      Given the catalogue contains "Cotton Tote" at £10.00 and "Flask" at £20.00
+      And I have applied a price range of £5.00 to £10.00
+      When I try to apply a minimum price of £20.00 and a maximum price of £10.00
+      Then I see "Minimum price must be less than or equal to maximum price."
+      And the only result remains "Cotton Tote"
+
+    @proposed @TC-PRICE-11
+    Scenario: Show the empty state when the price filter matches no products
+      Given the catalogue contains only "Cotton Tote" priced at £10.00
+      When I apply a price range of £20.00 to £30.00
+      Then I see "No products found."
+      And the price filter still shows £20.00 to £30.00
+
+  @US-07 @BR-10
+  Rule: Visitors can sort catalogue results by price
+    As a storefront visitor
+    I want to sort by price in either direction
+    So that I can see the least or most expensive products first
+
+    Scenario Outline: Sort by numeric unit price
+      Given the catalogue results appear in this order
+        | product       | price  |
+        | Travel Towel  | £12.00 |
+        | Ceramic Mug   | £8.50  |
+        | Thermal Flask | £100.00 |
+      When I sort by price in <direction> order
+      Then the results appear in this order
+        | product  |
+        | <first>  |
+        | <second> |
+        | <third>  |
+
+      Examples:
+        | case       | direction  | first         | second       | third         |
+        | TC-SORT-01 | ascending  | Ceramic Mug   | Travel Towel | Thermal Flask |
+        | TC-SORT-02 | descending | Thermal Flask | Travel Towel | Ceramic Mug   |
+
+    @proposed @BR-08 @BR-09
+    Scenario Outline: Keep the chosen sort when the search term or price range changes
+      Given the catalogue contains these products
+        | product         | price  |
+        | Blue Travel Mug | £15.00 |
+        | Red Travel Mug  | £10.00 |
+        | Steel Mug       | £25.00 |
+        | Travel Towel    | £12.00 |
+      And I have selected ascending price sort
+      And I have searched for "<initial_term>" with a price range of "<initial_range>"
+      When I change the <criterion> to "<new_value>"
+      Then ascending price sort is still selected
+      And the results appear in this order
+        | product         |
+        | Red Travel Mug  |
+        | Blue Travel Mug |
+
+      Examples:
+        | case       | initial_term | initial_range | criterion   | new_value      |
+        | TC-SORT-03 | Travel       | £10 to £20    | search term | Mug            |
+        | TC-SORT-04 | Mug          | £10 to £30    | price range | £10 to £20     |
+
+    @proposed
+    Scenario Outline: Sort equal-price products alphabetically in either price direction
+      Given the catalogue contains "Red Mug" and "Blue Mug", both priced at £10.00
+      When I sort by price in <direction> order
+      Then the results appear in this order
+        | product  |
+        | Blue Mug |
+        | Red Mug  |
+
+      Examples:
+        | case       | direction  |
+        | TC-SORT-05 | ascending  |
+        | TC-SORT-06 | descending |
+
+  # C. Shopping basket
+
+  @US-08 @BR-11
+  Rule: Customers can add in-stock products to their basket
+    As a customer
+    I want to add an in-stock product in my chosen quantity
+    So that I can build my order
+
+    Scenario Outline: Add the selected quantity of an in-stock product
+      Given I am signed in with an empty basket
+      And "Ceramic Mug" has 5 units available
+      When I add <quantity> units of "Ceramic Mug"
+      Then my basket contains one "Ceramic Mug" line with quantity <quantity>
+
+      Examples:
+        | case      | quantity |
+        | TC-ADD-01 | 1        |
+        | TC-ADD-02 | 3        |
+
+      @proposed
+      Examples: Add exactly the available stock
+        | case      | quantity |
+        | TC-ADD-05 | 5        |
+
+    Scenario Outline: Prevent adding zero units or adding an unavailable product
+      Given I am signed in with an empty basket
+      And "Ceramic Mug" has <stock> units available
+      When I try to add <quantity> units of "Ceramic Mug"
+      Then my basket remains empty
+
+      Examples:
+        | case      | stock | quantity |
+        | TC-ADD-03 | 5     | 0        |
+        | TC-ADD-04 | 0     | 1        |
+
+    @proposed
+    Scenario Outline: Apply available stock to first and repeat additions
+      Given I am signed in and "Ceramic Mug" has 5 units available
+      And my basket contains <existing> units of "Ceramic Mug"
+      When I try to add <requested> more units of "Ceramic Mug"
+      Then my basket contains <expected> units of "Ceramic Mug"
+      And there is at most one basket line for "Ceramic Mug"
+
+      Examples:
+        | case      | existing | requested | expected |
+        | TC-ADD-06 | 0        | 6         | 0        |
+        | TC-ADD-07 | 3        | 2         | 5        |
+        | TC-ADD-08 | 3        | 3         | 3        |
+
+    @proposed @TC-ADD-09
+    Scenario: Disable adding when stock is already zero
+      Given "Ceramic Mug" has no stock available
+      When I view "Ceramic Mug"
+      Then I see "Out of stock"
+      And "Add to basket" is disabled for "Ceramic Mug"
+
+    @proposed @TC-ADD-10
+    Scenario: Reject an addition when stock runs out after the page loads
+      Given I opened "Ceramic Mug" while it was in stock
+      And its available stock has since dropped to zero
+      When I try to add a unit of "Ceramic Mug"
+      Then I see "This product is out of stock."
+      And my basket contents and subtotal remain unchanged
+
+  @US-09 @BR-12
+  Rule: Customers can change a basket quantity within available stock
+    As a customer
+    I want to change an item's quantity
+    So that I can order the number of units I need
+
+    Background:
+      Given my basket contains 2 units of "Ceramic Mug" priced at £8.50 each
+      And "Ceramic Mug" has 5 units available
+
+    Scenario Outline: Set a valid whole-number quantity
+      When I change the quantity of "Ceramic Mug" to <quantity>
+      Then the basket shows "Ceramic Mug" with quantity <quantity>
+
+      Examples:
+        | case      | quantity |
+        | TC-QTY-01 | 1        |
+        | TC-QTY-02 | 3        |
+        | TC-QTY-03 | 5        |
+
+    @proposed
+    Scenario Outline: Keep the existing basket when an invalid quantity is submitted
+      When I try to submit <quantity> as the quantity of "Ceramic Mug"
+      Then the basket still shows "Ceramic Mug" with quantity 2
+      And its line total and the basket subtotal remain £17.00
+      And I see "Enter a whole number from 1 to 5."
+
+      Examples:
+        | case      | quantity |
+        | TC-QTY-04 | 0        |
+        | TC-QTY-05 | 6        |
+        | TC-QTY-06 | 2.5      |
+
+    @proposed @TC-QTY-07
+    Scenario: Offer only valid quantities in the selector
+      When I open the quantity selector for "Ceramic Mug"
+      Then the available quantities are 1, 2, 3, 4 and 5
+
+  @US-10 @BR-13
+  Rule: Customers can remove products from their basket
+    As a customer
+    I want to remove a basket item
+    So that I can leave out a product I no longer want
+
+    @TC-REMOVE-01
+    Scenario: Remove one of two basket items
+      Given my basket contains 2 units of "Ceramic Mug" and 1 unit of "Travel Towel"
+      When I remove "Ceramic Mug"
+      Then my basket contains only "Travel Towel" with quantity 1
+
+  @US-11 @BR-14 @BR-15
+  Rule: The basket shows accurate item prices, line totals and subtotal
+    As a customer
+    I want to see the cost of each basket item and the subtotal
+    So that I can check what my items cost before checkout
+
+    @TC-TOTAL-01
+    Scenario: Show unit price, quantity and line total for each item
+      Given my basket contains 2 units of "Ceramic Mug" at £8.50 each
+      And my basket contains 3 units of "Travel Towel" at £12.00 each
+      When I view my basket
+      Then I see these basket lines
+        | product      | unit price | quantity | line total |
+        | Ceramic Mug  | £8.50      | 2        | £17.00     |
+        | Travel Towel | £12.00     | 3        | £36.00     |
+
+    @TC-TOTAL-02
+    Scenario: Add all line totals to calculate the subtotal
+      Given my basket contains 2 units of "Ceramic Mug" at £8.50 each
+      And my basket contains 3 units of "Travel Towel" at £12.00 each
+      When I view my basket
+      Then the basket subtotal is £53.00
+
+    @BR-12 @TC-TOTAL-03
+    Scenario: Recalculate totals after a quantity change
+      Given my basket contains 2 units of "Ceramic Mug" at £8.50 each and 1 "Travel Towel" at £12.00
+      And "Ceramic Mug" has 5 units available
+      When I change the quantity of "Ceramic Mug" to 3
+      Then the "Ceramic Mug" line total is £25.50
+      And the basket subtotal is £37.50
+
+    @BR-13 @TC-TOTAL-04
+    Scenario: Recalculate the subtotal after removing an item
+      Given my basket contains 2 units of "Ceramic Mug" at £8.50 each and 1 "Travel Towel" at £12.00
+      When I remove "Ceramic Mug"
+      Then the basket subtotal is £12.00
+
+    @TC-TOTAL-05
+    Scenario: Show a zero subtotal for an already empty basket
+      Given my basket is empty
+      When I view my basket
+      Then the basket subtotal is £0.00
+
+    @BR-13 @TC-TOTAL-06
+    Scenario: Show a zero subtotal after removing the last item
+      Given my basket contains only 2 units of "Ceramic Mug" at £8.50 each
+      When I remove "Ceramic Mug"
+      Then my basket is empty
+      And the basket subtotal is £0.00
+
+  @US-12 @BR-16
+  Rule: Customers can continue shopping with their saved basket
+    As a logged-in customer
+    I want my basket to keep its contents as I browse or sign back in
+    So that I can continue shopping without adding everything again
+
+    @TC-KEEP-01
+    Scenario: Retain the basket across website pages
+      Given I am signed in and left my basket to visit the catalogue
+      And the basket contained 2 units of "Ceramic Mug" and 1 unit of "Travel Towel"
+      When I return to my basket
+      Then it contains exactly 2 units of "Ceramic Mug" and 1 unit of "Travel Towel"
+
+    @TC-KEEP-02
+    Scenario: Restore the basket after sign-out and sign-in
+      Given I signed out of "sam@example.com" with 2 units of "Ceramic Mug" and 1 unit of "Travel Towel" in my basket
+      And I have signed back into the same account
+      When I open my basket
+      Then it contains exactly 2 units of "Ceramic Mug" and 1 unit of "Travel Towel"
+
+    @proposed
+    Scenario Outline: Flag a saved quantity that exceeds current stock
+      Given my saved basket contains 3 units of "Ceramic Mug"
+      And I am signed in after "<journey>"
+      And available stock for "Ceramic Mug" has dropped to <stock> units
+      When I open my basket
+      Then the saved quantity for "Ceramic Mug" is still 3
+      And I see "<message>" on that basket line
+      And checkout is unavailable until I resolve the stock issue
+
+      Examples:
+        | case       | journey                   | stock | message                                                  |
+        | TC-KEEP-03 | returning to the basket   | 2     | Only 2 units available. Reduce the quantity or remove this item. |
+        | TC-KEEP-04 | signing back in           | 2     | Only 2 units available. Reduce the quantity or remove this item. |
+        | TC-KEEP-05 | signing back in           | 0     | This product is out of stock. Remove it to continue.      |
+
+    @proposed @BR-14 @BR-15 @TC-KEEP-06
+    Scenario: Show the current price when restoring a saved basket
+      Given my saved basket contains only 2 units of "Ceramic Mug" added at £8.50 each
+      And the price changed to £9.00 while I was signed out
+      And I have signed back into the same account
+      When I open my basket
+      Then the quantity is still 2 and the displayed unit price is £9.00
+      And the line total and basket subtotal are both £18.00
+      And I see "Price changed from £8.50 to £9.00."
+
+  # D. Checkout
+
+  @US-13 @BR-17
+  Rule: Signed-in customers with a non-empty basket can start checkout
+    As a logged-in customer with items in my basket
+    I want to proceed to checkout
+    So that I can place an order
+
+    @TC-CHECKOUT-01
+    Scenario: Proceed to checkout with one item
+      Given I am signed in and my basket contains 1 unit of "Ceramic Mug"
+      When I proceed to checkout
+      Then I can enter my delivery address
+
+    @proposed @TC-CHECKOUT-02
+    Scenario: Prompt a signed-out visitor to sign in
+      Given I am signed out
+      When I open checkout directly
+      Then I am taken to the sign-in page
+      And I see "Sign in to continue to checkout."
+
+    @proposed
+    Scenario Outline: Route the customer after checkout sign-in
+      Given checkout has directed me to sign in
+      And my account has <quantity> items in its basket
+      When I sign in successfully
+      Then I am taken to "<page>"
+
+      Examples:
+        | case           | quantity | page     |
+        | TC-CHECKOUT-03 | 1        | checkout |
+        | TC-CHECKOUT-04 | 0        | basket   |
+
+    @proposed @TC-CHECKOUT-05
+    Scenario: Disable checkout on an empty basket
+      Given I am signed in and my basket is empty
+      When I open my basket
+      Then "Checkout" is disabled
+
+    @proposed @TC-CHECKOUT-06
+    Scenario: Redirect an empty-basket customer who opens checkout directly
+      Given I am signed in and my basket is empty
+      When I open checkout directly
+      Then I am taken to my basket
+      And I see "Add an item to your basket before checking out."
+
+  @US-14 @BR-18
+  Rule: Customers provide a complete delivery address before placing an order
+    As a customer checking out
+    I want to enter the recipient and delivery address
+    So that my purchase can be delivered to the right place
+
+    Background:
+      Given I am signed in at checkout with an item in my basket
+      And I have entered this delivery address
+        | field          | value           |
+        | Recipient name | Sam Taylor      |
+        | Address line 1 | 12 Example Road |
+        | Town or city   | London          |
+        | Postcode       | SW1A 1AA        |
+        | Country        | United Kingdom  |
+
+    @TC-ADDRESS-01
+    Scenario: Continue with a complete delivery address
+      When I submit the delivery address
+      Then I can review my order before payment
+
+    Scenario Outline: Prevent order placement when a required address field is blank
+      Given I leave "<field>" blank
+      When I try to continue checkout
+      Then I cannot proceed to place the order until I complete "<field>"
+
+      Examples:
+        | case          | field          |
+        | TC-ADDRESS-02 | Recipient name |
+        | TC-ADDRESS-03 | Address line 1 |
+        | TC-ADDRESS-04 | Town or city   |
+        | TC-ADDRESS-05 | Postcode       |
+        | TC-ADDRESS-06 | Country        |
+
+    @proposed
+    Scenario Outline: Show field-specific address errors on Continue
+      Given I replace the "<field>" value with "<value>"
+      When I select "Continue"
+      Then I remain on the delivery address form
+      And I see "<message>" beside "<field>"
+      And the other entered address fields retain their values
+
+      Examples:
+        | case          | field          | value | message                      |
+        | TC-ADDRESS-07 | Recipient name |       | Enter the recipient’s name.  |
+        | TC-ADDRESS-08 | Address line 1 |       | Enter address line 1.        |
+        | TC-ADDRESS-09 | Town or city   |       | Enter a town or city.        |
+        | TC-ADDRESS-10 | Postcode       |       | Enter a postcode.            |
+        | TC-ADDRESS-11 | Country        |       | Select a country.            |
+        | TC-ADDRESS-12 | Postcode       | 12345 | Enter a valid UK postcode.   |
+
+    @proposed @TC-ADDRESS-13
+    Scenario: Show all missing-field errors on the same submission
+      Given I leave "Recipient name" and "Postcode" blank
+      When I select "Continue"
+      Then I see "Enter the recipient’s name." beside "Recipient name"
+      And I see "Enter a postcode." beside "Postcode"
+      And I remain on the delivery address form
+
+    @proposed
+    Scenario Outline: Accept UK postcode case and spacing variations
+      Given I enter "<postcode>" as the postcode
+      When I select "Continue"
+      Then the order review displays the postcode as "SW1A 1AA"
+
+      Examples:
+        | case          | postcode |
+        | TC-ADDRESS-14 | sw1a 1aa |
+        | TC-ADDRESS-15 | SW1A1AA  |
+        | TC-ADDRESS-16 | sw1a1aa  |
+
+    @proposed @TC-ADDRESS-17
+    Scenario: Offer only the UK for delivery in the initial release
+      When I open the delivery country selector
+      Then "United Kingdom" is the only selectable delivery country
+
+  @US-15 @BR-19 @BR-20 @BR-21
+  Rule: Customers can review their order and its full cost before paying
+    As a customer checking out
+    I want to review my delivery address, items, quantities and totals
+    So that I can check what I am buying and how much I will pay
+
+    Scenario Outline: Calculate delivery and final total at the free-delivery boundary
+      Given I am at checkout with a complete delivery address and a product subtotal of <subtotal>
+      When I review the order before payment
+      Then the product subtotal is displayed as "<subtotal>"
+      And the delivery charge is displayed as "<delivery>"
+      And the final order total is displayed as "<total>"
+
+      Examples:
+        | case           | subtotal | delivery | total  |
+        | TC-DELIVERY-01 | £49.99   | £3.99    | £53.98 |
+        | TC-DELIVERY-02 | £50.00   | £0.00    | £50.00 |
+        | TC-DELIVERY-03 | £50.01   | £0.00    | £50.01 |
+
+    @TC-REVIEW-01
+    Scenario: Display the delivery address, basket items and totals before payment
+      Given I am signed in at checkout
+      And I provided this delivery address
+        | field          | value           |
+        | Recipient name | Sam Taylor      |
+        | Address line 1 | 12 Example Road |
+        | Town or city   | London          |
+        | Postcode       | SW1A 1AA        |
+        | Country        | United Kingdom  |
+      And my basket contains 2 units of "Ceramic Mug" at £8.50 each and 1 "Travel Towel" at £12.00
+      When I review the order before payment
+      Then I see the complete delivery address I entered
+      And I see exactly these products and quantities
+        | product      | quantity |
+        | Ceramic Mug  | 2        |
+        | Travel Towel | 1        |
+      And I see these GBP amounts to two decimal places
+        | label             | amount |
+        | Product subtotal  | £29.00 |
+        | Delivery charge   | £3.99  |
+        | Final order total | £32.99 |
+
+  @US-16 @BR-22
+  Rule: Customers can pay by debit or credit card
+    As a customer ready to pay
+    I want to pay by debit or credit card through the integrated payment provider
+    So that I can complete my purchase online
+
+    Scenario Outline: Submit payment using a supported card type
+      Given I am ready to pay £32.99 at checkout
+      And I have a valid <card> card from the integrated provider's test environment
+      When I submit the payment using that card
+      Then the integrated payment provider accepts a payment of £32.99
+
+      Examples:
+        | case       | card   |
+        | TC-CARD-01 | debit  |
+        | TC-CARD-02 | credit |
+
+  @US-17 @BR-23 @BR-24
+  Rule: Customers can see whether their payment created an order
+    As a customer who submits a payment
+    I want to see my order confirmation or know when I can retry
+    So that I can complete my purchase without paying twice
+
+    @TC-ORDER-01
+    Scenario: Create an order and display its confirmation after payment succeeds
+      Given I am ready to pay £32.99 at checkout
+      And the payment provider is set to return success
+      When I submit the card payment
+      Then an order is created for my purchase
+      And the confirmation displays the reference for that order
+      And the confirmation displays a final total of £32.99
+
+    @TC-ORDER-02
+    Scenario: Use a different order reference for a separate successful purchase
+      Given an earlier order exists with reference "ORD-1001"
+      And I am ready to pay for a separate purchase
+      And the payment provider is set to return success
+      When I submit the card payment for the new purchase
+      Then the new order confirmation shows an order reference
+      And that reference differs from "ORD-1001"
+
+    @TC-ORDER-03
+    Scenario: Retain the basket and create no order when payment fails
+      Given I am ready to pay for 2 units of "Ceramic Mug" and 1 unit of "Travel Towel"
+      And the payment provider is set to return failure
+      When I submit the card payment
+      Then no order is created for this attempt
+      And my basket still contains exactly 2 units of "Ceramic Mug" and 1 unit of "Travel Towel"
+      And I see "Payment failed. Please try again."
+
+    @proposed
+    Scenario Outline: Keep the basket and prevent a second payment while the outcome is unknown
+      Given I submitted a payment for 2 units of "Ceramic Mug" and 1 unit of "Travel Towel"
+      And the attempt is unresolved because <event>
+      When I reopen checkout
+      Then my basket still contains exactly 2 units of "Ceramic Mug" and 1 unit of "Travel Towel"
+      And I see "We’re checking your payment. Please don’t pay again yet."
+      And I cannot start another payment while that attempt is unresolved
+
+      Examples:
+        | case        | event                             |
+        | TC-ORDER-04 | the provider returned pending     |
+        | TC-ORDER-05 | the payment response timed out    |
+        | TC-ORDER-06 | I closed the payment page         |
+
+    @proposed
+    Scenario Outline: Show the existing order after a delayed success
+      Given I submitted a payment for £32.99 and <interruption>
+      And the provider has since confirmed that payment succeeded
+      When I reopen checkout
+      Then exactly one order exists for that payment
+      And its confirmation displays its order reference and a final total of £32.99
+      And the purchased items have been removed from my basket
+
+      Examples:
+        | case        | interruption                   |
+        | TC-ORDER-07 | the response timed out         |
+        | TC-ORDER-08 | I closed the payment page      |
+
+    @proposed @TC-ORDER-09
+    Scenario: Allow a retry after the provider confirms a delayed failure
+      Given I closed the payment page after submitting payment for a basket containing 2 units of "Ceramic Mug"
+      And the provider has since confirmed that payment failed
+      When I reopen checkout
+      Then no order exists for that attempt
+      And my basket still contains 2 units of "Ceramic Mug"
+      And I see "Payment failed. Please try again."
+      And I can start a new payment attempt
+
+    @proposed @TC-ORDER-10
+    Scenario: Allow a retry after the provider confirms cancellation
+      Given I started payment for a basket containing 2 units of "Ceramic Mug"
+      And the provider has confirmed cancellation
+      When I return to checkout
+      Then no order exists for that attempt
+      And my basket still contains 2 units of "Ceramic Mug"
+      And I see "Payment was cancelled. You can try again."
+      And I can start a new payment attempt
+
+    @proposed @TC-ORDER-11
+    Scenario: Clear purchased items after a successful order
+      Given my basket contains only 2 units of "Ceramic Mug"
+      And the payment provider is set to return success
+      When I complete payment for those items
+      Then I see the order confirmation
+      And my basket is empty
+      And the basket subtotal is £0.00
+
+    @proposed @scope-pending @TC-ORDER-12
+    Scenario: Send an order confirmation email if email is approved for release
+      Given I have a registered test inbox
+      And my successful order has reference "ORD-1001" and final total £32.99
+      When the order confirmation email is sent
+      Then my registered inbox receives a confirmation for "ORD-1001"
+      And the email displays the final order total of £32.99
+
+  # Refinement decisions to record before sign-off
+  # - Confirm that registration may disclose that an email is already registered.
+  # - Agree on a reset-email delivery window before adding a timed assertion.
+  # - Confirm UK-only delivery for the initial release.
+  # - Confirm whether order confirmation email is in release scope.
+  # - Agree on when to offer help if a payment remains unresolved.
+  # - If discounts are introduced, confirm whether free delivery uses the
+  #   discounted product subtotal before delivery. The current delivery
+  #   scenarios use the product subtotal specified by BR-19.

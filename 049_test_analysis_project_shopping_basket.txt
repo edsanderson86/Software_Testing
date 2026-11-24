@@ -1,0 +1,156 @@
+Feature: Storefront shopping basket
+
+  @US-08 @BR-11
+  Scenario Outline: Add an in-stock product in the selected quantity
+    Given I am a logged-in customer with an empty basket
+    And "Ceramic Mug" has 5 units available
+    When I add <quantity> units of "Ceramic Mug" to my basket
+    Then my basket shows "Ceramic Mug" with quantity <quantity>
+
+    @TC-ADD-01
+    Examples: Minimum quantity
+      | quantity |
+      | 1        |
+
+    @TC-ADD-02
+    Examples: Multiple units
+      | quantity |
+      | 3        |
+
+  @US-08 @BR-11 @TC-ADD-03
+  Scenario: Prevent adding zero units
+    Given I am a logged-in customer with an empty basket
+    And "Ceramic Mug" has 5 units available
+    When I try to add 0 units of "Ceramic Mug" to my basket
+    Then my basket remains empty
+
+  @US-08 @BR-11 @TC-ADD-04
+  Scenario: Prevent adding an out-of-stock product
+    Given I am a logged-in customer with an empty basket
+    And "Ceramic Mug" has 0 units available
+    When I try to add 1 unit of "Ceramic Mug" to my basket
+    Then my basket remains empty
+
+  @US-09 @BR-12
+  Scenario Outline: Change a basket quantity within available stock
+    Given my basket contains 2 units of "Ceramic Mug"
+    And "Ceramic Mug" has 5 units available
+    When I change the quantity of "Ceramic Mug" to <quantity>
+    Then my basket shows "Ceramic Mug" with quantity <quantity>
+
+    @TC-QTY-01
+    Examples: Minimum quantity
+      | quantity |
+      | 1        |
+
+    @TC-QTY-02
+    Examples: Quantity between the limits
+      | quantity |
+      | 3        |
+
+    @TC-QTY-03
+    Examples: Available stock limit
+      | quantity |
+      | 5        |
+
+  @US-09 @BR-12
+  Scenario Outline: Keep the existing quantity after an invalid change
+    Given my basket contains 2 units of "Ceramic Mug"
+    And "Ceramic Mug" has 5 units available
+    When I try to change the quantity of "Ceramic Mug" to <quantity>
+    Then my basket still shows "Ceramic Mug" with quantity 2
+
+    @TC-QTY-04
+    Examples: Below the minimum
+      | quantity |
+      | 0        |
+
+    @TC-QTY-05
+    Examples: Above available stock
+      | quantity |
+      | 6        |
+
+    @TC-QTY-06
+    Examples: Fractional quantity
+      | quantity |
+      | 2.5      |
+
+  @US-10 @BR-13 @TC-REMOVE-01
+  Scenario: Remove one product from a basket containing two products
+    Given my basket contains 2 units of "Ceramic Mug" and 1 unit of "Travel Towel"
+    When I remove "Ceramic Mug" from my basket
+    Then my basket contains only "Travel Towel" with quantity 1
+
+  @US-11 @BR-14 @TC-TOTAL-01
+  Scenario: Display each item's unit price, quantity and line total
+    Given my basket contains 2 units of "Ceramic Mug" priced at £8.50 each
+    And my basket contains 3 units of "Travel Towel" priced at £12.00 each
+    When I view my basket
+    Then I see these basket rows
+      | product      | unit_price | quantity | line_total |
+      | Ceramic Mug  | £8.50      | 2        | £17.00     |
+      | Travel Towel | £12.00     | 3        | £36.00     |
+
+  @US-11 @BR-15 @TC-TOTAL-02
+  Scenario: Display the sum of all line totals as the subtotal
+    Given my basket contains 2 units of "Ceramic Mug" priced at £8.50 each
+    And my basket contains 3 units of "Travel Towel" priced at £12.00 each
+    When I view my basket
+    Then the basket subtotal is £53.00
+
+  @US-09 @US-11 @BR-12 @BR-14 @BR-15 @TC-TOTAL-03
+  Scenario: Update the line total and subtotal after a quantity change
+    Given my basket contains 2 units of "Ceramic Mug" priced at £8.50 each
+    And "Ceramic Mug" has 5 units available
+    And my basket contains 1 unit of "Travel Towel" priced at £12.00
+    When I change the quantity of "Ceramic Mug" to 3
+    Then the line total for "Ceramic Mug" is £25.50
+    And the basket subtotal is £37.50
+
+  @US-10 @US-11 @BR-13 @BR-15 @TC-TOTAL-04
+  Scenario: Update the subtotal after removing one of two items
+    Given my basket contains 2 units of "Ceramic Mug" priced at £8.50 each
+    And my basket contains 1 unit of "Travel Towel" priced at £12.00
+    When I remove "Ceramic Mug" from my basket
+    Then the basket subtotal is £12.00
+
+  @US-11 @BR-15 @TC-TOTAL-05
+  Scenario: Display a zero subtotal for an empty basket
+    Given my basket is empty
+    When I view my basket
+    Then the basket subtotal is £0.00
+
+  @US-10 @US-11 @BR-13 @BR-15 @TC-TOTAL-06
+  Scenario: Update the subtotal to zero when the last item is removed
+    Given my basket contains only 2 units of "Ceramic Mug" priced at £8.50 each
+    When I remove "Ceramic Mug" from my basket
+    Then my basket is empty
+    And the basket subtotal is £0.00
+
+  @US-12 @BR-16
+  Rule: A logged-in customer retains their basket contents
+
+    Background:
+      Given I am signed in to the customer account "sam@example.com"
+      And my basket contains these items
+        | product      | quantity |
+        | Ceramic Mug  | 2        |
+        | Travel Towel | 1        |
+
+    @TC-KEEP-01
+    Scenario: Retain the basket after visiting another page
+      Given I have navigated from my basket to the product catalogue
+      When I return to my basket
+      Then my basket contains exactly these items
+        | product      | quantity |
+        | Ceramic Mug  | 2        |
+        | Travel Towel | 1        |
+
+    @TC-KEEP-02
+    Scenario: Retain the basket after signing back into the same account
+      Given I have signed out
+      When I sign back in to "sam@example.com" and open my basket
+      Then my basket contains exactly these items
+        | product      | quantity |
+        | Ceramic Mug  | 2        |
+        | Travel Towel | 1        |
